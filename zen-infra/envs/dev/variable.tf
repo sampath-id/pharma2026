@@ -19,11 +19,11 @@ variable "github_org" {
 variable "github_org_id" {
   description = "Numeric GitHub org/owner ID"
   type        = string
-  default     = ""   # filled in Lab 5
+  default     = "" # filled in Lab 5
 }
 
 variable "github_repo_ids" {
   description = "Map of repo name to numeric GitHub repo ID"
   type        = map(string)
-  default     = {}   # filled in Lab 5
+  default     = {} # filled in Lab 5
 }
