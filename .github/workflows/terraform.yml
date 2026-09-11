@@ -6,11 +6,13 @@ on:
     paths:
       - 'envs/dev/**'
       - 'modules/**'
+
   pull_request:
     branches: [main]
     paths:
       - 'envs/dev/**'
       - 'modules/**'
+
   workflow_dispatch:
     inputs:
       action:
@@ -19,6 +21,7 @@ on:
         default: 'plan'
         type: choice
         options: [plan, apply, destroy]
+
       confirm_destroy:
         description: 'Type "destroy" to confirm destruction'
         required: false
@@ -37,14 +40,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+
+  # =========================================================
+  # TERRAFORM PLAN
+  # =========================================================
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: zen-infra/envs/dev
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -73,30 +83,43 @@ jobs:
           terraform plan \
             -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
             -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
-            -var="github_org=sampath-id" \
+            -var="github_org=${{ vars.GH_ORG }}" \
             -out=tfplan \
             -no-color
 
+      # IMPORTANT:
+      # tfplan is created at:
+      # zen-infra/envs/dev/tfplan
       - name: Upload plan file
         uses: actions/upload-artifact@v6
         with:
           name: tfplan
-          path: envs/dev/tfplan
+          path: zen-infra/envs/dev/tfplan
+          if-no-files-found: error
           retention-days: 1
 
+
+  # =========================================================
+  # TERRAFORM APPLY
+  # =========================================================
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: plan
+
     if: |
       (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+
     environment: dev
+
     defaults:
       run:
         working-directory: zen-infra/envs/dev
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -113,28 +136,50 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
+      # IMPORTANT:
+      # Download directly into the Terraform working directory
       - name: Download plan file
         uses: actions/download-artifact@v6
         with:
           name: tfplan
-          path: envs/dev
+          path: zen-infra/envs/dev
+
+      - name: Verify plan file
+        run: |
+          echo "Current directory:"
+          pwd
+
+          echo "Files:"
+          ls -la
+
+          echo "Terraform plan:"
+          ls -lh tfplan
 
       - name: Terraform Apply
         run: terraform apply -auto-approve -no-color tfplan
 
+
+  # =========================================================
+  # TERRAFORM DESTROY
+  # =========================================================
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
+
     if: |
       github.event_name == 'workflow_dispatch' &&
       github.event.inputs.action == 'destroy' &&
       github.event.inputs.confirm_destroy == 'destroy'
+
     environment: dev
+
     defaults:
       run:
         working-directory: zen-infra/envs/dev
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
@@ -163,4 +208,4 @@ jobs:
       - name: Release state lock on failure
         if: failure() || cancelled()
         run: |
-          aws s3 rm s3://${{ vars.zen-pharma-terraform-state-infra }}/envs/dev/terraform.tfstate.tflock || true
+          aws s3 rm s3://${{ env.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
