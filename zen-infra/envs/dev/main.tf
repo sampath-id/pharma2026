@@ -1,4 +1,4 @@
-locals  {
+locals {
   project = "pharma"
   env     = "dev"
   region  = "us-east-1"
